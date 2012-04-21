@@ -1,8 +1,19 @@
 Name          : happstack-clientsession
 Version       : 7.0.0
 License       : BSD3
+License-file  : COPYING
+Synopsis      : client-side session data
+Author        : Dag Odenhall
+Maintainer    : Happstack team <happs@googlegroups.com>
+Homepage      : http://happstack.com
 Cabal-Version : >= 1.9.2
 Build-Type    : Simple
+
+source-repository head
+    type:     darcs
+    subdir:   happstack-clientsession
+    location: http://patch-tag.com/r/mae/happstack
+
 
 Library
   GHC-Options     : -Wall
