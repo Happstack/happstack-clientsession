@@ -3,10 +3,12 @@ Version       : 7.0.0
 License       : BSD3
 License-file  : COPYING
 Synopsis      : client-side session data
+Description   : uses the clientsession library to store session data in an HTTP cookie
 Author        : Dag Odenhall
 Maintainer    : Happstack team <happs@googlegroups.com>
 Homepage      : http://happstack.com
 Cabal-Version : >= 1.9.2
+Category      : Web, Happstack
 Build-Type    : Simple
 
 source-repository head
