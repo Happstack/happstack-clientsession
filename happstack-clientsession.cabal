@@ -7,7 +7,7 @@ Description   : uses the clientsession library to store session data in an HTTP 
 Author        : Dag Odenhall
 Maintainer    : Happstack team <happs@googlegroups.com>
 Homepage      : http://happstack.com
-Cabal-Version : >= 1.9.2
+Cabal-Version : >= 1.6
 Category      : Web, Happstack
 Build-Type    : Simple
 
