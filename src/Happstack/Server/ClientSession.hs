@@ -20,7 +20,7 @@ module Happstack.Server.ClientSession
   ( ClientSession(..)
   , SessionConf(..)
   , mkSessionConf
-  , ClientSessionT
+  , ClientSessionT(..)
   , runClientSessionT
   , MonadClientSession(getSession, putSession, expireSession)
   , viewStateT'
