@@ -83,20 +83,17 @@ mkSessionConf key = SessionConf
 -- | SessionStateT (which needs a better name), is like StateT, except it records if 'put' was ever called
 newtype SessionStateT s m a = SessionStateT { unSessionStateT :: StateT (SessionData s) m a }
     deriving ( Functor, Applicative, Alternative, Monad, MonadPlus, MonadIO, MonadFix, MonadError e, MonadCont
-             , HasRqData, FilterMonad r, WebMonad r, ServerMonad)
+             , MonadTrans, HasRqData, FilterMonad r, WebMonad r, ServerMonad)
 
 mapSessionStateT :: (m (a, SessionData s) -> n (b, SessionData s)) -> SessionStateT s m a -> SessionStateT s n b
 mapSessionStateT f (SessionStateT m) = SessionStateT $ mapStateT f m
 
 instance Happstack m => Happstack (SessionStateT sessionData m)
 
-instance MonadTrans (SessionStateT sessionData) where
-    lift = SessionStateT . lift
-
 instance (Monad m, ClientSession sessionData) => MonadState sessionData (SessionStateT sessionData m)  where
     get   = SessionStateT $ do sd <- get
                                case sd of
-                                 (NoChange  sd') -> return sd'
+                                 (NoChange sd') -> return sd'
                                  (Modified sd') -> return sd'
                                  _              -> return emptySession
     put a = SessionStateT $ put (Modified a)
@@ -230,7 +227,7 @@ liftSessionStateT m =
        (a, sd') <- lift $ runSessionStateT m (NoChange sd)
        case sd' of
          (Modified sd'') -> putSession sd''
-         (NoChange  _   ) -> return ()
+         (NoChange _   ) -> return ()
          Unread          -> error $ "liftSessionStateT: session data came back Unread. How did that happen?"
          Expired         -> error $ "liftSessionStateT: session data came back Expired. How did that happen?"
        return a
