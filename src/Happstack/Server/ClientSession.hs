@@ -25,7 +25,6 @@ module Happstack.Server.ClientSession
   , MonadClientSession(getSession, putSession, expireSession)
   , viewStateT'
   , StateT'
-  , sessionPart
   , withClientSessionT
   ) where
 
@@ -248,29 +247,10 @@ viewStateT' m =
 -- | Wrapper around your handlers that use the session.  Takes care of
 -- expiring the cookie of an expired session, or encrypting a modified
 -- session into the cookie.
-sessionPart :: (Functor m, Monad m, MonadIO m, FilterMonad Response m, ClientSession st)
-            => ClientSessionT st m a -> ClientSessionT st m a
-sessionPart part = do
-    a  <- part
-    cs <- getChangeStatus
-    case cs of
-      Modified    -> encode
-      Expired     -> expire
-      _           -> return ()
-    return a
-  where
-    encode = do SessionConf{..} <- askSessionConf
-                sd <- getSessionData
-                bytes <- liftIO . encryptIO sessionKey . runPut . safePut $ sd
-                addCookie sessionCookieLife $ (mkCookie sessionCookieName $ unpack bytes) { secure = sessionSecure }
-    expire = do name <- asksSessionConf sessionCookieName
-                expireCookie name
-
--- | Wrapper around your handlers that use the session.  Takes care of
--- expiring the cookie of an expired session, or encrypting a modified
--- session into the cookie.
-withClientSessionT :: (Happstack m, Functor m, Monad m, MonadIO m, FilterMonad Response m, ClientSession sessionData, Show sessionData)
-            => SessionConf -> ClientSessionT sessionData m a -> m a
+withClientSessionT :: (Happstack m, Functor m, Monad m, FilterMonad Response m, ClientSession sessionData) =>
+                      SessionConf
+                   -> ClientSessionT sessionData m a
+                   -> m a
 withClientSessionT sessionConf@SessionConf{..} part = do
   do (a, cs, sd) <- runClientSessionT part sessionConf
      case cs of
