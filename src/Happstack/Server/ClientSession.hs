@@ -18,22 +18,22 @@ The cookie values stored in an encryted cookie to make it more difficult for use
 
 module Happstack.Server.ClientSession
   ( ClientSession(..)
+  , MonadClientSession(getSession, putSession, expireSession)
   , SessionConf(..)
   , mkSessionConf
   , ClientSessionT(..)
   , runClientSessionT
-  , MonadClientSession(getSession, putSession, expireSession)
-  , viewStateT'
-  , StateT'
   , withClientSessionT
+  , SessionStateT
+  , liftSessionStateT
   ) where
 
 import Control.Applicative   (Applicative, Alternative, optional)
 import Control.Monad         (MonadPlus)
 import Control.Monad.Error   (MonadError)
 import Control.Monad.Fix     (MonadFix)
-import Control.Monad.Reader  (MonadReader(ask, local))
-import Control.Monad.State   (MonadState(get,put), StateT(..), modify, gets)
+import Control.Monad.Reader  (MonadReader(ask, local), ReaderT(..), mapReaderT)
+import Control.Monad.State   (MonadState(get,put), StateT(..), mapStateT, modify, gets)
 import Control.Monad.Writer  (MonadWriter(tell, listen, pass))
 import Control.Monad.RWS     (MonadRWS, RWST(..), mapRWST, runRWST)
 import Control.Monad.Trans   (MonadIO(liftIO), MonadTrans(lift))
@@ -51,25 +51,8 @@ class SafeCopy st => ClientSession st where
   -- session stored.
   emptySession :: st
 
-data ChangeStatus
-    = Unread | Decoded | Modified  | Expired | NoChange
+data SessionData sessionData = Unread | NoChange sessionData | Modified sessionData  | Expired
       deriving (Eq, Ord, Read, Show)
-
-instance Monoid ChangeStatus where
-    mempty = NoChange
-    Unread   `mappend` NoChange = Unread
-    Unread   `mappend` cs       = cs
-    Decoded  `mappend` Modified = Modified
-    Decoded  `mappend` Expired  = Expired
-    Decoded  `mappend` NoChange = Decoded
-    Decoded  `mappend` Decoded  = Decoded
-    Decoded  `mappend` Unread   = error "how did this happen?"
-    Modified `mappend` Expired  = Expired
-    Modified `mappend` _        = Modified
-    Expired  `mappend` Modified = Modified
-    Expired  `mappend` _        = Expired
-    NoChange `mappend` cs       = cs
-
 
 -- | Configuration for the session cookie for passing to 'runClientSessionT'.
 data SessionConf = SessionConf
@@ -97,51 +80,65 @@ mkSessionConf key = SessionConf
     , sessionSecure     = False
     }
 
--- | StateT' (which needs a better name), is like StateT, except it records if 'put' was ever called
-newtype StateT' s m a = StateT' { unStateT' :: StateT (ChangeStatus, s) m a }
+-- | SessionStateT (which needs a better name), is like StateT, except it records if 'put' was ever called
+newtype SessionStateT s m a = SessionStateT { unSessionStateT :: StateT (SessionData s) m a }
     deriving ( Functor, Applicative, Alternative, Monad, MonadPlus, MonadIO, MonadFix, MonadError e, MonadCont
              , HasRqData, FilterMonad r, WebMonad r, ServerMonad)
 
-instance Happstack m => Happstack (StateT' sessionData m)
+mapSessionStateT :: (m (a, SessionData s) -> n (b, SessionData s)) -> SessionStateT s m a -> SessionStateT s n b
+mapSessionStateT f (SessionStateT m) = SessionStateT $ mapStateT f m
 
-instance MonadTrans (StateT' sessionData) where
-    lift = StateT' . lift
+instance Happstack m => Happstack (SessionStateT sessionData m)
 
-instance (Monad m) => MonadState st (StateT' st m)  where
-    get   = StateT' (gets snd)
-    put a = StateT' $ put (Modified, a)
+instance MonadTrans (SessionStateT sessionData) where
+    lift = SessionStateT . lift
 
-newtype ClientSessionT sessionData m a = ClientSessionT { unClientSessionT :: RWST SessionConf () (ChangeStatus, sessionData) m a }
+instance (Monad m, ClientSession sessionData) => MonadState sessionData (SessionStateT sessionData m)  where
+    get   = SessionStateT $ do sd <- get
+                               case sd of
+                                 (NoChange  sd') -> return sd'
+                                 (Modified sd') -> return sd'
+                                 _              -> return emptySession
+    put a = SessionStateT $ put (Modified a)
+
+runSessionStateT :: SessionStateT sessionData m a -> SessionData sessionData -> m (a, SessionData sessionData)
+runSessionStateT m sd = runStateT (unSessionStateT m) sd
+
+newtype ClientSessionT sessionData m a = ClientSessionT { unClientSessionT :: ReaderT SessionConf (SessionStateT sessionData m) a }
     deriving ( Functor, Applicative, Alternative, Monad, MonadPlus, MonadIO, MonadFix, MonadError e, MonadCont
              , HasRqData, FilterMonad r, WebMonad r, ServerMonad)
 
-runClientSessionT :: (Functor m, Monad m, ClientSession sessionData) => ClientSessionT sessionData m a -> SessionConf -> m (a, ChangeStatus, sessionData)
-runClientSessionT cs sc =
-    do (a, (changeStatus, sessionData), ()) <- runRWST (unClientSessionT cs) sc (Unread, emptySession)
-       return (a, changeStatus, sessionData)
+runClientSessionT :: ClientSessionT sessionData m a -> SessionConf -> m (a, SessionData sessionData)
+runClientSessionT cs sc = runSessionStateT (runReaderT (unClientSessionT cs) sc) Unread
 
 instance Happstack m => Happstack (ClientSessionT sessionData m)
 
 instance MonadTrans (ClientSessionT sessionData) where
-    lift = ClientSessionT . lift
+    lift = ClientSessionT . lift . lift
+
+mapClientSessionT :: (m (a, SessionData sessionData) -> n (b, SessionData sessionData))
+                  -> ClientSessionT sessionData m a
+                  -> ClientSessionT sessionData n b
+mapClientSessionT f (ClientSessionT m) = ClientSessionT $ mapReaderT (mapSessionStateT f) m
 
 instance (MonadReader r m) => MonadReader r (ClientSessionT sessionData m) where
     ask = lift ask
-    local f (ClientSessionT rwst) = ClientSessionT (mapRWST (local f) rwst)
+    local f m = mapClientSessionT (local f) m
 
 instance (MonadWriter w m) => MonadWriter w (ClientSessionT sessionData m) where
     tell     = lift . tell
-    listen (ClientSessionT rwst) = ClientSessionT $ mapRWST listen' rwst
+
+    listen m = mapClientSessionT listen' m
         where
           listen' m =
-              do ((a, s, w),w') <- listen m
-                 return ((a, w'), s, w)
-    pass (ClientSessionT rwst) = ClientSessionT $ mapRWST pass' rwst
+              do ((a, s), w') <- listen m
+                 return ((a, w'), s)
+    pass m = mapClientSessionT pass' m
         where
           pass' m =
-              do ((a, f), st, w) <- m
+              do ((a, f), st) <- m
                  a' <- pass $ return (a, f)
-                 return (a', st, w)
+                 return (a', st)
 
 instance (MonadState s m) => MonadState s (ClientSessionT sessionData m) where
     get   = lift get
@@ -158,44 +155,18 @@ asksSessionConf f = do
     sc <- askSessionConf
     return (f sc)
 
-setChangeStatus :: (Monad m) => ChangeStatus -> ClientSessionT sessionData m ()
-setChangeStatus cs = ClientSessionT $ modify (\(_, sd) -> (cs, sd))
-
-getChangeStatus :: (Monad m) => ClientSessionT sessionData m ChangeStatus
-getChangeStatus = ClientSessionT $ gets fst
-
-
 -- | Fetch the current value of the state within the monad.
-getSessionData :: (Monad m) => ClientSessionT sessionData m sessionData
-getSessionData = ClientSessionT $ gets snd
+getSessionData :: (Monad m) => ClientSessionT sessionData m (SessionData sessionData)
+getSessionData =
+    ClientSessionT $ ReaderT $ \_ -> SessionStateT $ get
 
 -- | @'put' s@ sets the state within the monad to @s@.
-putSessionData :: (Monad m) => sessionData -> ClientSessionT sessionData m ()
-putSessionData sd = ClientSessionT $ put (Modified, sd)
+putSessionData :: (Monad m) => (SessionData sessionData) -> ClientSessionT sessionData m ()
+putSessionData sd =
+    ClientSessionT $ ReaderT $ \_ -> SessionStateT $ put sd
 
-getSessionCST :: (Functor m, MonadPlus m, HasRqData m, ClientSession st)
-           => ClientSessionT st m st
-getSessionCST =
-    do cs <- getChangeStatus
-       case cs of
-         Unread ->
-             do a <- getValue
-                ClientSessionT $ put (Decoded, a)
-                return a
-         Decoded  ->
-             do getSessionData
-         Modified ->
-             do getSessionData
-         Expired ->
-             do newSession
-         NoChange ->
-             do getSessionData
-
-getValue :: (Functor m, Monad m, MonadPlus m, HasRqData m, ClientSession sessionData) =>
-            ClientSessionT sessionData m sessionData
-getValue = do name <- asksSessionConf sessionCookieName
-              value <- optional $ lookCookieValue name
-              maybe newSession decode value
+newSession :: (Monad m, ClientSession st) => m st
+newSession = return emptySession
 
 decode :: (Monad m, ClientSession b) =>
           String
@@ -204,16 +175,36 @@ decode v = do key <- asksSessionConf sessionKey
               maybe newSession (either (const newSession) return . runGet safeGet)
                      . decrypt key $ pack v
 
-newSession :: (Monad m, ClientSession st) => m st
-newSession = return emptySession
+
+getValue :: (Functor m, Monad m, MonadPlus m, HasRqData m, ClientSession sessionData) =>
+            ClientSessionT sessionData m sessionData
+getValue = do name <- asksSessionConf sessionCookieName
+              value <- optional $ lookCookieValue name
+              maybe newSession decode value
+
+getSessionCST :: (Functor m, MonadPlus m, HasRqData m, ClientSession sessionData)
+           => ClientSessionT sessionData m sessionData
+getSessionCST =
+    do sd <- getSessionData
+       case sd of
+         Unread ->
+             do a <- getValue
+                putSessionData (NoChange a)
+                return a
+         NoChange a  ->
+             do return a
+         Modified a ->
+             do return a
+         Expired ->
+             do newSession
 
 -- | Put a new value in the session.
 putSessionCST :: (Monad m, ClientSession sessionData) => sessionData -> ClientSessionT sessionData m ()
-putSessionCST sd = putSessionData sd
+putSessionCST sd = putSessionData (Modified sd)
 
 -- | Expire the session, i.e. the cookie holding it.
 expireSessionCST :: Monad m => ClientSessionT st m ()
-expireSessionCST = setChangeStatus Expired
+expireSessionCST = putSessionData Expired
 
 class MonadClientSession sessionData m | m -> sessionData where
     getSession    :: m sessionData
@@ -226,22 +217,22 @@ instance (Functor m , MonadPlus m, HasRqData m, ClientSession sessionData) =>
     putSession    = putSessionCST
     expireSession = expireSessionCST
 
--- | Run a 'StateT'' monad with the session.
+-- | Run a 'SessionStateT' monad with the session.
 --
 -- This is provided so that you can use the functions from 'Data.Lens'
 -- which rely on 'MonadState'
-viewStateT' :: (Monad (t m), Monad m, MonadTrans t, MonadClientSession sessionData (t m)) =>
-               StateT' sessionData m b
-            -> t m b
-viewStateT' m =
+-- liftSessionStateT :: (Monad (t m), Monad m, MonadTrans t, MonadClientSession sessionData (t m)) =>
+--               SessionStateT sessionData m b
+--            -> t m b
+liftSessionStateT :: (Monad m, MonadTrans t, MonadClientSession sessionData (t m), Monad (t m)) => SessionStateT sessionData m a -> t m a
+liftSessionStateT m =
     do sd <- getSession
-       (a, (cs, sd')) <- lift $ runStateT (unStateT' m) (NoChange, sd)
-       case cs of
-         Modified -> putSession sd'
-         Decoded  -> return ()
-         NoChange -> return ()
-         Unread   -> return ()
-         Expired  -> error "viewStateT': the impossible happened"
+       (a, sd') <- lift $ runSessionStateT m (NoChange sd)
+       case sd' of
+         (Modified sd'') -> putSession sd''
+         (NoChange  _   ) -> return ()
+         Unread          -> error $ "liftSessionStateT: session data came back Unread. How did that happen?"
+         Expired         -> error $ "liftSessionStateT: session data came back Expired. How did that happen?"
        return a
 
 -- | Wrapper around your handlers that use the session.  Takes care of
@@ -252,11 +243,11 @@ withClientSessionT :: (Happstack m, Functor m, Monad m, FilterMonad Response m, 
                    -> ClientSessionT sessionData m a
                    -> m a
 withClientSessionT sessionConf@SessionConf{..} part = do
-  do (a, cs, sd) <- runClientSessionT part sessionConf
-     case cs of
-      Modified    -> encode sd
-      Expired     -> expire
-      _           -> return ()
+  do (a, sd) <- runClientSessionT part sessionConf
+     case sd of
+      Modified sd' -> encode sd'
+      Expired      -> expire
+      _            -> return ()
      return a
   where
     encode sd = do bytes <- liftIO . encryptIO sessionKey . runPut . safePut $ sd

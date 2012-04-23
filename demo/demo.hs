@@ -51,7 +51,7 @@ appTemplate title headers body =
 routes :: App Response
 routes =
     do nullDir
-       c <- viewStateT' $ count += 1
+       c <- liftSessionStateT $ count += 1
        ok $ toResponse $
           appTemplate "Viewing Session Data" [] $
                       H.p $ do H.toHtml c
