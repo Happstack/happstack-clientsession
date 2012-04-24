@@ -26,6 +26,10 @@ module Happstack.Server.ClientSession
   , withClientSessionT
   , SessionStateT
   , liftSessionStateT
+    -- * Exported from @Web.ClientSession@
+  , Key
+  , getKey
+  , getDefaultKey
   ) where
 
 import Control.Applicative   (Applicative, Alternative, optional)
@@ -42,7 +46,7 @@ import Data.ByteString.Char8 (pack, unpack)
 import Data.SafeCopy         (SafeCopy, safeGet, safePut)
 import Data.Serialize        (runGet, runPut)
 import Happstack.Server      (HasRqData, FilterMonad, WebMonad, ServerMonad, Happstack, Response, CookieLife(Session), Cookie(secure), lookCookieValue, addCookie, mkCookie, expireCookie)
-import Web.ClientSession     (Key, decrypt, encryptIO)
+import Web.ClientSession     (Key, getKey, getDefaultKey, decrypt, encryptIO)
 
 -- | Your session type must have an instance for this class.
 class SafeCopy st => ClientSession st where
