@@ -76,10 +76,10 @@ data SessionConf = SessionConf
 --
 -- > main = do key <- getDefaultKey
 -- >           let sessConf = (mkSessionConf key) { sessionCookieLife = oneWeek }
--- >           simpleHTTP nullConf $ withClientSessionT handlers sessConf
+-- >           simpleHTTP nullConf $ withClientSessionT sessConf handlers
 -- >   where
 -- >     oneWeek  = MaxAge $ 60 * 60 * 24 * 7
--- >     handlers = sessionPart $ msum [...]
+-- >     handlers = msum [...]
 --
 -- 'mkSessionConf' is currently defined as:
 --
