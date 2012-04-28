@@ -1,14 +1,103 @@
 {-# LANGUAGE DeriveDataTypeable, FlexibleContexts, FlexibleInstances, FunctionalDependencies, GeneralizedNewtypeDeriving, MultiParamTypeClasses, RecordWildCards, Rank2Types, ScopedTypeVariables, TypeFamilies, UndecidableInstances #-}
 {- |
-
-This module provides a simple session implementation which stores session data on the client as a cookie value.
+This module provides a simple session implementation which stores session data on the client as a cookie value. Note that 
 
 The cookie values stored in an encryted cookie to make it more difficult for users to tamper with the values. However, this does not prevent replay attacks, and should not be seen as a substitute for using HTTPS.
 
+The first thing you need to do is enable some extensions which can be
+done via a @LANGUAGE@ pragma at the top of your app:
+
+ {\-\# LANGUAGE DeriveDataTypeable, TemplateHaskell #\-\}
+
+Then you will need some imports:
+
+> module Main where
+>
+> import Happstack.Server   (ServerPartT, Response, simpleHTTP
+>                          , nullConf, nullDir, ok, toResponse
+>                          )
+> import Happstack.Server.ClientSession
+>                           ( ClientSession(..), ClientSessionT(..)
+>                          , getDefaultKey, mkSessionConf
+>                          , liftSessionStateT, withClientSessionT
+>                          )
+> import Data.Data          (Data, Typeable)
+> import Data.Lens          ((+=))
+> import Data.Lens.Template (makeLens)
+> import Data.SafeCopy      (base, deriveSafeCopy)
+
+Next you will want to create a type to hold your session data. Here we
+use a simple record which we will update using @data-lens-fd@. But,
+you could also store a, @Map Text Text@, or whatever suits your fancy
+as long as it can be serialized. (So no data types that include
+functions, existential types, etc).
+
+> data SessionData = SessionData
+>     { _count    :: Integer
+>     }
+>    deriving (Eq, Ord, Read, Show, Data, Typeable)
+>
+> -- | here we make it a lens, but that is not required
+> $(makeLens ''SessionData)
+
+We use the @safecopy@ library to serialize the data so we can encrypt
+it and store it in a cookie. @safecopy@ provides version migration,
+which means that we will be able to read-in old session data if we
+change the data type. The easiest way to create a 'SafeCopy' instance
+is with 'deriveSafeCopy':
+
+> $(deriveSafeCopy 0 'base ''SessionData)
+
+We also need to define what an 'emptySession' looks like. This will be
+used for creating new sessions when the client does not already have
+one:
+
+> instance ClientSession SessionData where
+>     emptySession = SessionData { _count = 0 }
+
+Next we have a function which reads a client-specific page counter and returns
+the number of times the page has been reloaded.
+
+In this function we use, 'liftSessionStateT' to lift the '+=' lens
+function into 'ClientSessionT' to increment and return the value
+stored in the client session.
+
+Alternatively, we could have used the 'getSession' and 'putSession'
+functions from 'MonadClientSession'. Those functions do not require
+the use of 'liftSessionStateT'.
+
+> routes :: ClientSessionT SessionData (ServerPartT IO) Response
+> routes =
+>     do nullDir
+>        c <- liftSessionStateT $ count += 1
+>        ok $ toResponse $ "you have viewed this page " ++ (show c) ++ " time(s)."
+
+Finally, we unwrap the 'ClientSessionT' monad transformer using 'withClientSessionT'.
+
+The 'SessionConf' type requires an encryption key. You can generate
+the key using 'getDefaultKey' uses a default filename. Alternatively,
+you can specific the name you want to use explicitly using
+'getKey'. The key will be created automatically if it does not already
+exist.
+
+If you change the key, all existing client sessions will be invalidated.
+
+> main :: IO ()
+> main =
+>     do key <- getDefaultKey
+>        let sessionConf = mkSessionConf key
+>        simpleHTTP nullConf $ withClientSessionT sessionConf $ routes
+
+In a real application you might want to use a @newtype@ wrapper around
+'ClientSessionT' to keep your type sigantures sane. An alternative
+version of this demo which does that can be found here:
+
+<http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-clientsession/demo/demo.hs>
 
 -}
 module Happstack.Server.ClientSession
-  ( ClientSession(..)
+  ( -- * Happstack.Server.ClientSession
+    ClientSession(..)
   , SessionStatus(..)
   , MonadClientSession(getSession, putSession, expireSession)
   , SessionConf(..)
@@ -45,7 +134,10 @@ import Data.ByteString.Char8 (pack, unpack)
 import Data.Monoid           (Monoid(..))
 import Data.SafeCopy         (SafeCopy, safeGet, safePut)
 import Data.Serialize        (runGet, runPut)
-import Happstack.Server      (HasRqData, FilterMonad, WebMonad, ServerMonad, Happstack, Response, CookieLife(Session), Cookie(secure), lookCookieValue, addCookie, mkCookie, expireCookie)
+import Happstack.Server      ( HasRqData, FilterMonad, WebMonad, ServerMonad, Happstack, Response
+                             , CookieLife(Session), Cookie(secure,cookiePath, cookieDomain)
+                             , lookCookieValue, addCookie, mkCookie, expireCookie
+                             )
 import Web.ClientSession     (Key, getKey, getDefaultKey, decrypt, encryptIO)
 
 ------------------------------------------------------------------------------
@@ -90,6 +182,8 @@ data SessionConf = SessionConf
 -- >    , sessionKey        = key
 -- >    , sessionSecure     = False
 -- >    }
+--
+-- see also: 'getKey', 'getDefaultKey'
 mkSessionConf :: Key -> SessionConf
 mkSessionConf key = SessionConf
     { sessionCookieName = "Happstack.ClientSession"
@@ -178,6 +272,12 @@ newtype ClientSessionT sessionData m a = ClientSessionT { unClientSessionT :: Re
              , HasRqData, FilterMonad r, WebMonad r, ServerMonad)
 
 -- | run the 'ClientSessionT' monad and get the result plus the final @SessionStatus sessionData@
+--
+-- This function does /not/ automatically update the cookie if the
+-- session has been modified. It is up to you to do that. You probably
+-- want to use 'withClientSessionT' instead.
+--
+-- see also: 'withClientSessionT', 'mkSessionConf'
 runClientSessionT :: ClientSessionT sessionData m a -> SessionConf -> m (a, SessionStatus sessionData)
 runClientSessionT cs sc = runSessionStateT (runReaderT (unClientSessionT cs) sc) Unread
 
@@ -361,9 +461,13 @@ liftSessionStateT m =
 -- withClientSessionT
 ------------------------------------------------------------------------------
 
--- | Wrapper around your handlers that use the session.  Takes care of
--- expiring the cookie of an expired session, or encrypting a modified
--- session into the cookie.
+-- | Wrapper around your handlers that use the session.
+--
+-- This function automatically takes care of expiring or updating the
+-- cookie if the 'expireSession' or 'modifySession' is called.
+--
+-- If no changes are made to the session, then the cookie will not be
+-- resent (because there is no need to).
 withClientSessionT :: (Happstack m, Functor m, Monad m, FilterMonad Response m, ClientSession sessionData) =>
                       SessionConf
                    -> ClientSessionT sessionData m a
