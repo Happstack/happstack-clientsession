@@ -1,8 +1,21 @@
 {-# LANGUAGE DeriveDataTypeable, FlexibleContexts, FlexibleInstances, FunctionalDependencies, GeneralizedNewtypeDeriving, MultiParamTypeClasses, RecordWildCards, Rank2Types, ScopedTypeVariables, TypeFamilies, UndecidableInstances #-}
 {- |
-This module provides a simple session implementation which stores session data on the client as a cookie value. Note that 
 
-The cookie values stored in an encryted cookie to make it more difficult for users to tamper with the values. However, this does not prevent replay attacks, and should not be seen as a substitute for using HTTPS.
+This module provides a simple session implementation which stores
+session data on the client as a cookie value.
+
+The cookie values stored in an encryted cookie to make it more
+difficult for users to tamper with the values. However, this does not
+prevent replay attacks, and should not be seen as a substitute for
+using HTTPS.
+
+By default the client will need to submit the cookie that contains the
+client session data for every request (including images, and other
+static assets). So, storing a large amount of data in the client
+session will make requests slower and is not recommended. If you have
+assets which can be served with out examining the client session data
+you can use the 'sessionPath' and 'sessionDomain' parameters of
+'SessionConf' to limit when the browser sends the session data cookie.
 
 The first thing you need to do is enable some extensions which can be
 done via a @LANGUAGE@ pragma at the top of your app:
@@ -160,6 +173,8 @@ data SessionConf = SessionConf
     , sessionCookieLife :: CookieLife  -- ^ Lifetime of that cookie.
     , sessionKey        :: Key         -- ^ Encryption key, usually from 'getKey' or 'getDefaultKey'.
     , sessionSecure     :: Bool        -- ^ Only use a session over secure transports.
+    , sessionPath       :: String      -- ^ cookie path
+    , sessionDomain     :: String      -- ^ cookie domain
     }
 
 -- | Create a 'SessionConf' using defaults for everything except
@@ -181,6 +196,8 @@ data SessionConf = SessionConf
 -- >    , sessionCookieLife = Session
 -- >    , sessionKey        = key
 -- >    , sessionSecure     = False
+-- >    , sessionPath       = "/"
+-- >    , sessionDomain     = ""
 -- >    }
 --
 -- see also: 'getKey', 'getDefaultKey'
@@ -190,6 +207,8 @@ mkSessionConf key = SessionConf
     , sessionCookieLife = Session
     , sessionKey        = key
     , sessionSecure     = False
+    , sessionPath       = "/"
+    , sessionDomain     = ""
     }
 
 ------------------------------------------------------------------------------
@@ -481,5 +500,9 @@ withClientSessionT sessionConf@SessionConf{..} part =
      return a
   where
     encode sd = do bytes <- liftIO . encryptIO sessionKey . runPut . safePut $ sd
-                   addCookie sessionCookieLife $ (mkCookie sessionCookieName $ unpack bytes) { secure = sessionSecure }
+                   let cookie = (mkCookie sessionCookieName $ unpack bytes) { secure       = sessionSecure
+                                                                            , cookiePath   = sessionPath
+                                                                            , cookieDomain = sessionDomain
+                                                                            }
+                   addCookie sessionCookieLife cookie
     expire = expireCookie sessionCookieName
