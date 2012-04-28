@@ -148,7 +148,7 @@ import Data.Monoid           (Monoid(..))
 import Data.SafeCopy         (SafeCopy, safeGet, safePut)
 import Data.Serialize        (runGet, runPut)
 import Happstack.Server      ( HasRqData, FilterMonad, WebMonad, ServerMonad, Happstack, Response
-                             , CookieLife(Session), Cookie(secure,cookiePath, cookieDomain)
+                             , CookieLife(Session), Cookie(secure,cookiePath, cookieDomain, httpOnly)
                              , lookCookieValue, addCookie, mkCookie, expireCookie
                              )
 import Web.ClientSession     (Key, getKey, getDefaultKey, decrypt, encryptIO)
@@ -172,9 +172,10 @@ data SessionConf = SessionConf
     { sessionCookieName :: String      -- ^ Name of the cookie to hold your session data.
     , sessionCookieLife :: CookieLife  -- ^ Lifetime of that cookie.
     , sessionKey        :: Key         -- ^ Encryption key, usually from 'getKey' or 'getDefaultKey'.
-    , sessionSecure     :: Bool        -- ^ Only use a session over secure transports.
-    , sessionPath       :: String      -- ^ cookie path
     , sessionDomain     :: String      -- ^ cookie domain
+    , sessionPath       :: String      -- ^ cookie path
+    , sessionSecure     :: Bool        -- ^ Only use a session over secure transports.
+    , sessionHttpOnly   :: Bool        -- ^ Only use session over HTTP (to prevent it from being stolen via cross-site scripting)
     }
 
 -- | Create a 'SessionConf' using defaults for everything except
@@ -195,9 +196,10 @@ data SessionConf = SessionConf
 -- >    { sessionCookieName = "Happstack.ClientSession"
 -- >    , sessionCookieLife = Session
 -- >    , sessionKey        = key
--- >    , sessionSecure     = False
--- >    , sessionPath       = "/"
 -- >    , sessionDomain     = ""
+-- >    , sessionPath       = "/"
+-- >    , sessionSecure     = False
+-- >    , sessionHttpOnly   = True
 -- >    }
 --
 -- see also: 'getKey', 'getDefaultKey'
@@ -206,9 +208,10 @@ mkSessionConf key = SessionConf
     { sessionCookieName = "Happstack.ClientSession"
     , sessionCookieLife = Session
     , sessionKey        = key
-    , sessionSecure     = False
-    , sessionPath       = "/"
     , sessionDomain     = ""
+    , sessionPath       = "/"
+    , sessionSecure     = False
+    , sessionHttpOnly   = True
     }
 
 ------------------------------------------------------------------------------
@@ -500,9 +503,10 @@ withClientSessionT sessionConf@SessionConf{..} part =
      return a
   where
     encode sd = do bytes <- liftIO . encryptIO sessionKey . runPut . safePut $ sd
-                   let cookie = (mkCookie sessionCookieName $ unpack bytes) { secure       = sessionSecure
+                   let cookie = (mkCookie sessionCookieName $ unpack bytes) { cookieDomain = sessionDomain
                                                                             , cookiePath   = sessionPath
-                                                                            , cookieDomain = sessionDomain
+                                                                            , secure       = sessionSecure
+                                                                            , httpOnly     = sessionHttpOnly
                                                                             }
                    addCookie sessionCookieLife cookie
     expire = expireCookie sessionCookieName
