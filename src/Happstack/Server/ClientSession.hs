@@ -7,7 +7,38 @@ session data on the client as a cookie value.
 The cookie values stored in an encryted cookie to make it more
 difficult for users to tamper with the values. However, this does not
 prevent replay attacks, and should not be seen as a substitute for
-using HTTPS.
+using HTTPS. Additionally, the cryptography libraries used to encrypt
+the cookie have never been audited. Hence you are encouraged to think
+carefully about what data you put in the session data.
+
+Another important thing to realize is clientside sessions do not
+provide Isolation. Imagine if the browser makes multiple simultaneous
+requests, which each modify the session data. The browser will submit
+the same cookie for each the requests, and each request handling
+thread will get their own copy of the session data. The threads will
+then modify their local copies independently and send their modified
+values back to the browser, overwriting each other. The final value
+will be determined by which ever request is sent last, and any changes
+made by the other request will be entirely lost.
+
+This means that clientsessions would not be suitable for implementing
+a request counter, because if overlapping requests are made, the count
+will be off. The count will only be accurate if the requests are
+processed sequentially. That said, the demo code implements a request
+counter anyway, because it is short and sweet. Also, this caveat was
+forgotten when the example code was being written.
+
+If you only modify the session data for POST requests, but not GET
+requests you are less likely to run into situations where you are
+losing changes, because there are not a lot of cases where a client
+will be submitting multiple POST requests in parallel. Though there is
+no guarantee.
+
+Alternatively, you can choose to /only/ store data where it is ok if
+modifications are lost. For example, if the session data contains only
+a userid and the time of the last request they made, then there is no
+great loss if some of the modifications are lost, because the access
+times are going to all be about the same anyway.
 
 By default the client will need to submit the cookie that contains the
 client session data for every request (including images, and other
