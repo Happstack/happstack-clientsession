@@ -158,6 +158,7 @@ module Happstack.Server.ClientSession
   , Key
   , getKey
   , getDefaultKey
+  , randomKey
   ) where
 
 import Control.Applicative   (Applicative, Alternative, optional)
@@ -183,7 +184,7 @@ import Happstack.Server      ( HasRqData, FilterMonad, WebMonad, ServerMonad, Ha
                              , CookieLife(Session), Cookie(secure,cookiePath, cookieDomain, httpOnly)
                              , lookCookieValue, addCookie, mkCookie, expireCookie
                              )
-import Web.ClientSession     (Key, getKey, getDefaultKey, decrypt, encryptIO)
+import Web.ClientSession     (Key, getKey, getDefaultKey, randomKey, decrypt, encryptIO)
 
 import qualified Data.Serialize as S
 
@@ -209,7 +210,7 @@ class SafeCopy st => ClientSession st where
 data SessionConf = SessionConf
     { sessionCookieName :: String      -- ^ Name of the cookie to hold your session data.
     , sessionCookieLife :: CookieLife  -- ^ Lifetime of that cookie.
-    , sessionKey        :: Key         -- ^ Encryption key, usually from 'getKey' or 'getDefaultKey'.
+    , sessionKey        :: Key         -- ^ Encryption key, usually from one of 'getKey', 'getDefaultKey' and 'randomKey'.
     , sessionDomain     :: String      -- ^ cookie domain
     , sessionPath       :: String      -- ^ cookie path
     , sessionSecure     :: Bool        -- ^ Only use a session over secure transports.
