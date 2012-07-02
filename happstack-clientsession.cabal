@@ -28,6 +28,6 @@ Library
     clientsession     == 0.8.*,
     happstack-server  == 7.0.*,
     monad-control     == 0.3.*,
-    mtl               == 2.0.*,
+    mtl               >= 2.0 && < 2.2,
     safecopy          == 0.6.*,
     transformers-base == 0.4.*
