@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable, FlexibleContexts, FlexibleInstances, FunctionalDependencies, GeneralizedNewtypeDeriving, MultiParamTypeClasses, RecordWildCards, Rank2Types, ScopedTypeVariables, TypeFamilies, UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {- |
 
 This module provides a simple session implementation which stores
@@ -176,13 +177,19 @@ import Control.Monad.Trans.Control               ( MonadTransControl(..)
                                                  )
 import Data.ByteString.Char8 (pack, unpack)
 import Data.Monoid           (Monoid(..))
-import Data.SafeCopy         (SafeCopy, safeGet, safePut)
+import Data.SafeCopy         (SafeCopy(getCopy, putCopy), contain, safeGet, safePut)
 import Data.Serialize        (runGet, runPut)
 import Happstack.Server      ( HasRqData, FilterMonad, WebMonad, ServerMonad, Happstack, Response
                              , CookieLife(Session), Cookie(secure,cookiePath, cookieDomain, httpOnly)
                              , lookCookieValue, addCookie, mkCookie, expireCookie
                              )
 import Web.ClientSession     (Key, getKey, getDefaultKey, decrypt, encryptIO)
+
+import qualified Data.Serialize as S
+
+instance SafeCopy Key where
+    getCopy = contain $ S.get
+    putCopy = contain . S.put
 
 ------------------------------------------------------------------------------
 -- class ClientSession
