@@ -4,14 +4,14 @@
 This module provides a simple session implementation which stores
 session data on the client as a cookie value.
 
-The cookie values stored in an encryted cookie to make it more
+The cookie values stored in an encrypted cookie to make it more
 difficult for users to tamper with the values. However, this does not
 prevent replay attacks, and should not be seen as a substitute for
 using HTTPS. Additionally, the cryptography libraries used to encrypt
 the cookie have never been audited. Hence you are encouraged to think
 carefully about what data you put in the session data.
 
-Another important thing to realize is clientside sessions do not
+Another important thing to realize is client-side sessions do not
 provide Isolation. Imagine if the browser makes multiple simultaneous
 requests, which each modify the session data. The browser will submit
 the same cookie for each the requests, and each request handling
@@ -34,7 +34,7 @@ losing changes, because there are not a lot of cases where a client
 will be submitting multiple POST requests in parallel. Though there is
 no guarantee.
 
-Alternatively, you can choose to /only/ store data where it is ok if
+Alternatively, you can choose to /only/ store data where it is OK if
 modifications are lost. For example, if the session data contains only
 a userid and the time of the last request they made, then there is no
 great loss if some of the modifications are lost, because the access
@@ -133,7 +133,7 @@ If you change the key, all existing client sessions will be invalidated.
 >        simpleHTTP nullConf $ withClientSessionT sessionConf $ routes
 
 In a real application you might want to use a @newtype@ wrapper around
-'ClientSessionT' to keep your type sigantures sane. An alternative
+'ClientSessionT' to keep your type signatures sane. An alternative
 version of this demo which does that can be found here:
 
 <http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-clientsession/demo/demo.hs>
