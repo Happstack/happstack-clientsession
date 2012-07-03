@@ -5,7 +5,7 @@
 This module provides a simple session implementation which stores
 session data on the client as a cookie value.
 
-The cookie values stored in an encrypted cookie to make it more
+The cookie values are stored in an encrypted cookie to make it more
 difficult for users to tamper with the values. However, this does not
 prevent replay attacks, and should not be seen as a substitute for
 using HTTPS. Additionally, the cryptography libraries used to encrypt
