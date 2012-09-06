@@ -163,14 +163,14 @@ module Happstack.Server.ClientSession
 
 import Control.Applicative   (Applicative, Alternative, optional)
 import Control.Monad         (MonadPlus(..), liftM)
-import Control.Monad.Base    (MonadBase )
-import Control.Monad.Cont    (MonadCont)
-import Control.Monad.Error   (MonadError)
+import Control.Monad.Base    (MonadBase)
+import Control.Monad.Cont    (MonadCont, ContT)
+import Control.Monad.Error   (MonadError, ErrorT, Error)
 import Control.Monad.Fix     (MonadFix)
 import Control.Monad.Reader  (MonadReader(ask, local), ReaderT(..), mapReaderT)
 import Control.Monad.State   (MonadState(get,put), StateT(..), mapStateT)
-import Control.Monad.Writer  (MonadWriter(tell, listen, pass))
-import Control.Monad.RWS     (MonadRWS)
+import Control.Monad.Writer  (MonadWriter(tell, listen, pass), WriterT(..))
+import Control.Monad.RWS     (MonadRWS, RWST)
 import Control.Monad.Trans   (MonadIO(liftIO), MonadTrans(lift))
 import Control.Monad.Trans.Control               ( MonadTransControl(..)
                                                  , MonadBaseControl(..)
@@ -490,6 +490,36 @@ instance (Functor m , MonadPlus m, HasRqData m, ClientSession sessionData) =>
     getSession    = getSessionCST
     putSession    = putSessionCST
     expireSession = expireSessionCST
+
+instance (Monad m, MonadClientSession sessionData m) => MonadClientSession sessionData (ContT c m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
+
+instance (Monad m, MonadClientSession sessionData m, Error e) => MonadClientSession sessionData (ErrorT e m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
+
+instance (Monad m, MonadClientSession sessionData m) => MonadClientSession sessionData (ReaderT r m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
+
+instance (Monad m, MonadClientSession sessionData m) => MonadClientSession sessionData (StateT s m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
+
+instance (Monad m, MonadClientSession sessionData m, Monoid w) => MonadClientSession sessionData (WriterT w m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
+
+instance (Monad m, MonadClientSession sessionData m, Monoid w) => MonadClientSession sessionData (RWST r w s m) where
+    getSession    = lift getSession
+    putSession    = lift . putSession
+    expireSession = lift expireSession
 
 ------------------------------------------------------------------------------
 -- liftSessionStateT
