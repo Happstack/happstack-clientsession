@@ -14,7 +14,7 @@ Build-Type    : Simple
 source-repository head
     type:     darcs
     subdir:   happstack-clientsession
-    location: http://patch-tag.com/r/mae/happstack
+    location: http://hub.darcs.net/stepcut/happstack
 
 Library
   GHC-Options     : -Wall
