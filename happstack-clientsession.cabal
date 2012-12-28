@@ -1,5 +1,5 @@
 Name          : happstack-clientsession
-Version       : 7.2.3
+Version       : 7.2.4
 License       : BSD3
 License-file  : COPYING
 Synopsis      : client-side session data
@@ -29,5 +29,5 @@ Library
     happstack-server  >= 7.0 && < 7.2,
     monad-control     == 0.3.*,
     mtl               >= 2.0 && < 2.2,
-    safecopy          >= 0.7 && <= 0.9,
+    safecopy          >= 0.7 && < 0.9,
     transformers-base == 0.4.*
