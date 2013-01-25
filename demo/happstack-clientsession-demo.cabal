@@ -14,12 +14,12 @@ Cabal-version:       >=1.2
 Executable happstack-clientsession-demo
      Main-is:        demo.hs
      Build-depends:  base                    >= 4 &&  <5,
-                     blaze-html              == 0.4.*,
-                     clientsession           == 0.7.*,
+                     blaze-html              == 0.5.*,
+                     clientsession           == 0.8.*,
                      data-lens-fd            == 2.0.*,
                      data-lens-template      == 2.1.*,
-                     happstack-server        == 7.0.*,
+                     happstack-server        >= 7.0 && < 7.2,
                      happstack-clientsession,
                      mtl                     >= 2 && < 2.2,
-                     safecopy                == 0.6.*,
+                     safecopy                >= 0.6 && < 0.9,
                      text                    == 0.11.*

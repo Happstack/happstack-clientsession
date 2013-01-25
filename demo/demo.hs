@@ -11,7 +11,7 @@ import Data.Lens           ((+=))
 import Data.Lens.Template
 import Data.SafeCopy
 import Data.Text
-import           Text.Blaze ((!))
+import           Text.Blaze.Html ((!))
 import qualified Text.Blaze.Html4.Strict as H
 import qualified Text.Blaze.Html4.Strict.Attributes as A
 import Web.ClientSession (getDefaultKey)
