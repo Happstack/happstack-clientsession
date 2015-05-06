@@ -12,9 +12,8 @@ Category      : Web, Happstack
 Build-Type    : Simple
 
 source-repository head
-    type:     darcs
-    subdir:   happstack-clientsession
-    location: http://hub.darcs.net/stepcut/happstack
+    type:     git
+    location: https://github.com/Happstack/happstack-clientsession
 
 Library
   GHC-Options     : -Wall
