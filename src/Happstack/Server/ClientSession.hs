@@ -177,6 +177,7 @@ import Control.Monad.Trans.Control               ( MonadTransControl(..)
                                                  , ComposeSt, defaultLiftBaseWith, defaultRestoreM
                                                  )
 import Data.ByteString.Char8 (pack, unpack)
+import Data.Semigroup        (Semigroup(..))
 import Data.Monoid           (Monoid(..))
 import Data.SafeCopy         (SafeCopy(getCopy, putCopy), contain, safeGet, safePut)
 import Data.Serialize        (runGet, runPut)
@@ -269,6 +270,9 @@ newtype SessionStateT s m a = SessionStateT { unSessionStateT :: StateT (Session
 
 instance Happstack m => Happstack (SessionStateT sessionData m)
 
+instance (MonadPlus m) => Semigroup (SessionStateT sessionData m a) where
+    (<>) = mplus
+
 instance (MonadPlus m) => Monoid (SessionStateT sessionData m a) where
     mempty  = mzero
     mappend = mplus
@@ -343,6 +347,9 @@ runClientSessionT :: ClientSessionT sessionData m a -> SessionConf -> m (a, Sess
 runClientSessionT cs sc = runSessionStateT (runReaderT (unClientSessionT cs) sc) Unread
 
 instance Happstack m => Happstack (ClientSessionT sessionData m)
+
+instance (MonadPlus m) => Semigroup (ClientSessionT sessionData m a) where
+    (<>) = mplus
 
 instance (MonadPlus m) => Monoid (ClientSessionT sessionData m a) where
     mempty  = mzero
