@@ -154,6 +154,7 @@ module Happstack.Server.ClientSession
   , SessionStateT
   , mapSessionStateT
   , liftSessionStateT
+  , askSessionConf
     -- * Exported from @Web.ClientSession@
   , Key
   , getKey
